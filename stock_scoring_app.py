@@ -1,54 +1,32 @@
 import streamlit as st
+import requests
 import pandas as pd
 
-# Function to calculate scores
+def fetch_stock_data(ticker):
+    # Sample API call, replace with actual API URL
+    url = f'https://api.example.com/stock/{ticker}'
+    response = requests.get(url)
+    return response.json()
 
-def calculate_scores(data):
-    # Normalize metrics
-    pe_score = 1 / data['P/E'] if data['P/E'] > 0 else 0
-    roe_score = data['ROE'] / 100 if data['ROE'] > 0 else 0
-    debt_equity_score = 1 - data['Debt/Equity'] if data['Debt/Equity'] < 1 else 0
-    beta_score = 1 - data['Beta'] if data['Beta'] < 1 else 0
-    rsi_score = 1 - (data['RSI'] / 100)
-    operating_margin_score = data['Operating Margin'] / 100 if data['Operating Margin'] > 0 else 0
-    fcf_score = data['FCF'] / 100 if data['FCF'] > 0 else 0
-    eps_score = data['EPS'] / 10 if data['EPS'] > 0 else 0
+def calculate_scores(metrics):
+    # calculations for Value, Momentum, Safety, and Quality
+    value_score = (metrics['P/E'] < 15) + (metrics['P/B'] < 1) + (metrics['PEG'] < 1)
+    momentum_score = (metrics['EPS Growth'] > 0) + (metrics['FCF Growth'] > 0)
+    safety_score = (metrics['Debt/Equity'] < 1) + (metrics['Beta'] < 1)
+    quality_score = (metrics['ROE'] > 15) + (metrics['Dividend Yield'] > 2) + (metrics['Operating Margin'] > 20)
+    return value_score, momentum_score, safety_score, quality_score
 
-    # Aggregate scores
-    value_score = pe_score
-    momentum_score = rsi_score
-    safety_score = (debt_equity_score + beta_score) / 2
-    quality_score = (roe_score + operating_margin_score + fcf_score + eps_score) / 4
+st.title('Stock Scoring App')
 
-    return {"Value": value_score, "Momentum": momentum_score, "Safety": safety_score, "Quality": quality_score}
+ticker = st.text_input('Enter stock ticker symbol:')
 
-# Streamlit UI
-
-st.title('Stock Scoring Application')
-
-# Input fields for stock metrics
-st.subheader('Input Stock Metrics')
-pe = st.number_input('P/E Ratio', min_value=0.0, format="%.2f")
-roe = st.number_input('ROE (%)', min_value=0.0, format="%.2f")
-debt_equity = st.number_input('Debt/Equity Ratio', min_value=0.0, format="%.2f")
-beta = st.number_input('Beta', min_value=0.0, format="%.2f")
-rsi = st.number_input('RSI', min_value=0.0, format="%.2f")
-operating_margin = st.number_input('Operating Margin (%)', min_value=0.0, format="%.2f")
-fcf = st.number_input('Free Cash Flow', min_value=0.0, format="%.2f")
-eps = st.number_input('EPS', min_value=0.0, format="%.2f")
-
-# Calculate and display scores when the button is pressed
-if st.button('Calculate Scores'):
-    metrics = {
-        'P/E': pe,
-        'ROE': roe,
-        'Debt/Equity': debt_equity,
-        'Beta': beta,
-        'RSI': rsi,
-        'Operating Margin': operating_margin,
-        'FCF': fcf,
-        'EPS': eps
-    }
-    scores = calculate_scores(metrics)
-    st.subheader('Stock Scores')
-    st.write(scores)
+if st.button('Fetch Metrics'):
+    if ticker:
+        metrics = fetch_stock_data(ticker)
+        value_score, momentum_score, safety_score, quality_score = calculate_scores(metrics)
+        st.write(f'Value Score: {value_score}')
+        st.write(f'Momentum Score: {momentum_score}')
+        st.write(f'Safety Score: {safety_score}')
+        st.write(f'Quality Score: {quality_score}')
+    else:
+        st.error('Please enter a ticker symbol.')
