@@ -7,7 +7,7 @@ import json
 # 1. API CONFIGURATION
 # ==========================================
 # REPLACEMENT: Use gemini-2.0-flash for stability
-API_KEY = "AIzaSyDRQsXmH0RGWso0GPKQlBu_IMa5ZjDSNfw" 
+API_KEY = "AIzaSyBOn3zckFKolrvzN9qtoRyLDZjv6jtTlko" 
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash')
 
