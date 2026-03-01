@@ -1,60 +1,47 @@
+# Comprehensive Scoring Implementation for Value, Momentum, Safety, and Quality Metrics
 
-import streamlit as st
-import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
+import numpy as np
 
-st.set_page_config(page_title="Stock Scorer Pro", layout="wide")
+class StockScoring:
+    def __init__(self, stock_data):
+        self.stock_data = stock_data
 
-st.title("📈 Pro Stock Scorer (Full Metrics)")
+    def score_value(self):
+        # Scoring based on P/E and P/B ratios
+        pe_score = np.where(self.stock_data['PE'] < 15, 5, np.where(self.stock_data['PE'] < 20, 3, 1))
+        pb_score = np.where(self.stock_data['PB'] < 1, 5, np.where(self.stock_data['PB'] < 3, 3, 1))
+        return pe_score + pb_score
 
-ticker_input = st.text_input("Enter Ticker (e.g., ITC.NS, KALYANKJIL.NS)", "ITC.NS")
+    def score_momentum(self):
+        # Scoring based on 200DMA and RSI
+        rsi_score = np.where(self.stock_data['RSI'] < 30, 5, np.where(self.stock_data['RSI'] < 70, 3, 1))
+        return rsi_score
 
-if ticker_input:
-    try:
-        stock = yf.Ticker(ticker_input)
-        info = stock.info
-        hist = stock.history(period="1y")
+    def score_safety(self):
+        # Scoring based on Debt/Equity and Beta
+        debt_eq_score = np.where(self.stock_data['DebtEq'] < 1, 5, np.where(self.stock_data['DebtEq'] < 2, 3, 1))
+        beta_score = np.where(self.stock_data['Beta'] < 1, 5, 3)
+        return debt_eq_score + beta_score
 
-        # --- REFINED DATA EXTRACTION ---
-        price = info.get('currentPrice', info.get('navPrice', 0))
-        pe = info.get('trailingPE', 0)
-        # Fix ROE: handle None and decimals
-        roe_raw = info.get('returnOnEquity', 0)
-        roe = (roe_raw * 100) if roe_raw is not None else 0
-        
-        peg = info.get('pegRatio', 0) if info.get('pegRatio') is not None else 0
-        debt_eq = info.get('debtToEquity', 0)
-        beta = info.get('beta', 0)
-        
-        # Fix Div Yield: standardizing decimal
-        div_raw = info.get('dividendYield', 0)
-        div_yield = (div_raw * 100) if div_raw is not None else 0
-        
-        op_margin = (info.get('operatingMargins', 0) or 0) * 100
-        eps = info.get('trailingEps', 0)
-        avg_vol = info.get('averageVolume', 0)
+    def score_quality(self):
+        # Scoring based on Op Margin, FCF, EPS, Div Yield, ROE
+        om_score = np.where(self.stock_data['OpMargin'] > 20, 5, np.where(self.stock_data['OpMargin'] > 10, 3, 1))
+        fcf_score = np.where(self.stock_data['FCF'] > 0, 5, 1)
+        eps_score = np.where(self.stock_data['EPS'] > 2, 5, 1)
+        div_yield_score = np.where(self.stock_data['DivYield'] > 3, 5, 1)
+        roe_score = np.where(self.stock_data['ROE'] > 15, 5, 3)
+        return om_score + fcf_score + eps_score + div_yield_score + roe_score
 
-        # Technicals
-        rsi = ta.rsi(hist['Close'], length=14).iloc[-1] if len(hist) > 14 else 0
-        sma200 = hist['Close'].rolling(window=200).mean().iloc[-1]
+    def calculate_scores(self):
+        self.stock_data['ValueScore'] = self.score_value()
+        self.stock_data['MomentumScore'] = self.score_momentum()
+        self.stock_data['SafetyScore'] = self.score_safety()
+        self.stock_data['QualityScore'] = self.score_quality()
+        return self.stock_data
 
-        # --- SCORING ---
-        score = 0
-        if 0 < pe < 20: score += 2
-        if roe > 15: score += 2
-        if 0 < peg < 1.5: score += 2
-        if beta < 1: score += 2
-        if price > sma200: score += 2
+# Example usage:
+# stock_data = pd.DataFrame({...})  # Load your stock data here
+# stock_scorer = StockScoring(stock_data)
+# scores = stock_scorer.calculate_scores()
 
-        # --- FULL DISPLAY TABLE ---
-        st.subheader(f"Final Score: {round(score, 1)} / 10")
-        
-        full_data = {
-            "Metric": ["Current Price", "P/E Ratio", "PEG Ratio", "ROE %", "Debt/Equity", "Beta", "Div Yield %", "Op. Margin %", "EPS", "RSI (14D)", "Avg Volume"],
-            "Value": [f"₹{price}", round(pe, 2), round(peg, 2), f"{round(roe, 2)}%", round(debt_eq, 2), round(beta, 2), f"{round(div_yield, 2)}%", f"{round(op_margin, 2)}%", round(eps, 2), round(rsi, 2), f"{avg_vol:,}"]
-        }
-        st.table(pd.DataFrame(full_data))
-
-    except Exception as e:
-        st.error(f"Error: {e}")
