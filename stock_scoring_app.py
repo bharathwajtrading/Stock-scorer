@@ -1,1 +1,54 @@
-import streamlit as st\nimport pandas as pd\n\ndef calculate_scores(data):\n    score_data = {}\n    # Example scoring logic with min/max thresholds\n    score_data['Value'] = (data['PE'] / data['Industry_PE']) * 100 if data['Industry_PE'] > 0 else 0\n    score_data['Momentum'] = data['RSI']\n    score_data['Safety'] = (data['ROE'] * 100) / (data['Debt_Eq'] + 1)\n    score_data['Quality'] = (data['OpMargin'] + data['FCF']) / 2\n    return score_data\n\ndef main():\n    st.title('Stock Scoring Application')\n    st.write('This application calculates Value, Momentum, Safety and Quality scores.')\n\n    # Input fields for user to enter stock metrics\n    num_companies = st.number_input('Number of Companies', min_value=1, max_value=100)\n    if st.button('Submit'): \n        stocks = []\n        for i in range(num_companies):\n            st.write(f'Enter metrics for Company {i + 1}:')\n            pe = st.number_input('P/E Ratio')\n            pb = st.number_input('P/B Ratio')\n            roe = st.number_input('ROE (%)')\n            debt_eq = st.number_input('Debt/Equity')\n            beta = st.number_input('Beta')\n            div_yield = st.number_input('Dividend Yield (%)')\n            rsi = st.number_input('RSI')\n            dma200 = st.number_input('200 DMA')\n            op_margin = st.number_input('Operating Margin (%)')\n            fcf = st.number_input('Free Cash Flow')\n            eps = st.number_input('EPS')\n            industry_pe = st.number_input('Industry P/E Ratio')\n\n            stock_data = {'PE': pe, 'PB': pb, 'ROE': roe, 'Debt_Eq': debt_eq, 'Beta': beta, 'DivYield': div_yield, 'RSI': rsi, '200DMA': dma200, 'OpMargin': op_margin, 'FCF': fcf, 'EPS': eps, 'Industry_PE': industry_pe}\n            stocks.append(stock_data)\n            scores = calculate_scores(stock_data)\n            st.write(f'Scores for Company {i + 1}:', scores)\n\nif __name__ == '__main__':\n    main()
+import streamlit as st
+import pandas as pd
+
+# Function to calculate scores
+
+def calculate_scores(data):
+    # Normalize metrics
+    pe_score = 1 / data['P/E'] if data['P/E'] > 0 else 0
+    roe_score = data['ROE'] / 100 if data['ROE'] > 0 else 0
+    debt_equity_score = 1 - data['Debt/Equity'] if data['Debt/Equity'] < 1 else 0
+    beta_score = 1 - data['Beta'] if data['Beta'] < 1 else 0
+    rsi_score = 1 - (data['RSI'] / 100)
+    operating_margin_score = data['Operating Margin'] / 100 if data['Operating Margin'] > 0 else 0
+    fcf_score = data['FCF'] / 100 if data['FCF'] > 0 else 0
+    eps_score = data['EPS'] / 10 if data['EPS'] > 0 else 0
+
+    # Aggregate scores
+    value_score = pe_score
+    momentum_score = rsi_score
+    safety_score = (debt_equity_score + beta_score) / 2
+    quality_score = (roe_score + operating_margin_score + fcf_score + eps_score) / 4
+
+    return {"Value": value_score, "Momentum": momentum_score, "Safety": safety_score, "Quality": quality_score}
+
+# Streamlit UI
+
+st.title('Stock Scoring Application')
+
+# Input fields for stock metrics
+st.subheader('Input Stock Metrics')
+pe = st.number_input('P/E Ratio', min_value=0.0, format="%.2f")
+roe = st.number_input('ROE (%)', min_value=0.0, format="%.2f")
+debt_equity = st.number_input('Debt/Equity Ratio', min_value=0.0, format="%.2f")
+beta = st.number_input('Beta', min_value=0.0, format="%.2f")
+rsi = st.number_input('RSI', min_value=0.0, format="%.2f")
+operating_margin = st.number_input('Operating Margin (%)', min_value=0.0, format="%.2f")
+fcf = st.number_input('Free Cash Flow', min_value=0.0, format="%.2f")
+eps = st.number_input('EPS', min_value=0.0, format="%.2f")
+
+# Calculate and display scores when the button is pressed
+if st.button('Calculate Scores'):
+    metrics = {
+        'P/E': pe,
+        'ROE': roe,
+        'Debt/Equity': debt_equity,
+        'Beta': beta,
+        'RSI': rsi,
+        'Operating Margin': operating_margin,
+        'FCF': fcf,
+        'EPS': eps
+    }
+    scores = calculate_scores(metrics)
+    st.subheader('Stock Scores')
+    st.write(scores)
