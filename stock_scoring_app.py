@@ -1,116 +1,80 @@
 import streamlit as st
-import yfinance as yf
-import pandas as pd
-import pandas_ta as ta
+import google.generativeai as genai
+import json
+import re
 
-def fetch_live_metrics(ticker):
-    """Fetches real-time market data to ensure 100% accuracy."""
-    try:
-        stock = yf.Ticker(ticker)
-        # Fetch 1 year of daily data for technicals (RSI, MA200)
-        hist = stock.history(period="1y")
-        if hist.empty:
-            return None
-        
-        info = stock.info
-        current_price = hist['Close'].iloc[-1]
-        
-        # Calculate Technicals using current day data
-        ma200 = hist['Close'].rolling(window=200).mean().iloc[-1]
-        rsi = ta.rsi(hist['Close'], length=14).iloc[-1]
-        
-        # Return mapped dictionary for the scoring model
-        return {
-            'PE': info.get('trailingPE', 0),
-            'PB': info.get('priceToBook', 0),
-            'PEG': info.get('pegRatio', 0),
-            'Industry_PE_Limit': info.get('forwardPE', 1), # Proxy for industry limit
-            'ROE': (info.get('returnOnEquity', 0) or 0) * 100,
-            'DebtEq': info.get('debtToEquity', 0),
-            'Beta': info.get('beta', 0),
-            'DivYield': (info.get('dividendYield', 0) or 0) * 100,
-            'Price': current_price,
-            'RSI': rsi,
-            'MA200': ma200,
-            'Vol': hist['Volume'].iloc[-1],
-            'AvgVol': info.get('averageVolume', 1),
-            'OpMargin': (info.get('operatingMargins', 0) or 0) * 100,
-            'FCF': info.get('freeCashflow', 0),
-            'EPS': info.get('trailingEps', 0),
-            'ROI_3yr_Avg': (info.get('returnOnAssets', 0) or 0) * 100
-        }
-    except Exception as e:
-        st.error(f"Error fetching live data: {e}")
-        return None
+# ==========================================
+# 1. CONFIGURATION & INTEGRATION
+# ==========================================
+# Your provided Gemini API Key
+GEMINI_API_KEY = "AIzaSyDRQsXmH0RGWso0GPKQlBu_IMa5ZjDSNfw"
+genai.configure(api_key=GEMINI_API_KEY)
 
-def calculate_sheet3_score(d):
-    """Applies the exact binary and weighted logic from Sheet 3."""
-    # VALUE (30%)
-    v_tests = [
-        10 if d['PE'] < d['Industry_PE_Limit'] else 0,
-        10 if d['PB'] < 1 else 0,
-        10 if d['PEG'] < 1 else 0
-    ]
-    v_score = sum(v_tests) / len(v_tests)
+# Use Gemini 1.5 Pro for better reasoning and data extraction
+model = genai.GenerativeModel(model_name="gemini-1.5-pro")
 
-    # SAFETY (30%)
-    s_tests = [
-        10 if d['ROE'] > 15 else 0,
-        10 if d['DebtEq'] < 100 else 0,
-        10 if d['Beta'] < 1 else 0,
-        10 if d['DivYield'] > 2 else 0
-    ]
-    s_score = sum(s_tests) / len(s_tests)
+# ==========================================
+# 2. UI SETUP
+# ==========================================
+st.set_page_config(page_title="Gemini Stock Scorer", layout="wide")
+st.title("🎯 Real-Time AI Stock Scorer")
+st.markdown("Enter a ticker to fetch **Current Day** data and calculate scores based on your Spreadsheet logic.")
 
-    # MOMENTUM (20%)
-    m_tests = [
-        10 if 30 < d['RSI'] < 70 else 0,
-        10 if d['Price'] > d['MA200'] else 0,
-        10 if d['Vol'] > d['AvgVol'] else 0
-    ]
-    m_score = sum(m_tests) / len(m_tests)
-
-    # QUALITY (20%)
-    q_tests = [
-        10 if d['OpMargin'] > 20 else 0,
-        10 if d['FCF'] > 0 else 0,
-        10 if d['EPS'] > 0 else 0
-    ]
-    q_score = sum(q_tests) / len(q_tests)
-
-    # Final Calculation
-    final = (v_score * 0.30) + (s_score * 0.30) + (m_score * 0.20) + (q_score * 0.20)
-    return round(v_score, 2), round(s_score, 2), round(m_score, 2), round(q_score, 2), round(final, 2)
-
-# --- Streamlit Layout ---
-st.set_page_config(page_title="Live Stock Scorer", page_icon="📈")
-st.title("🚀 Real-Time Market Scorer")
-st.write("Ensuring 100% current data via live API feeds.")
-
-ticker = st.text_input("Enter Ticker (e.g., ITC.NS, RELIANCE.NS, AAPL):").upper()
+ticker = st.text_input("Enter Ticker (e.g., ITC.NS, RELIANCE.NS, TSLA):", "").upper()
 
 if ticker:
-    with st.spinner(f"Pulling current data for {ticker}..."):
-        data = fetch_live_metrics(ticker)
-        
-    if data:
-        v, s, m, q, final = calculate_sheet3_score(data)
-        
-        # Display Results
-        if final >= 7:
-            st.success(f"### FINAL SCORE: {final} / 10 (BUY)")
-        elif final <= 5:
-            st.error(f"### FINAL SCORE: {final} / 10 (SELL)")
-        else:
-            st.warning(f"### FINAL SCORE: {final} / 10 (HOLD)")
+    with st.spinner(f"🔍 Gemini is searching for real-time data for {ticker}..."):
+        # This prompt forces Gemini to research current values and apply your specific rubric
+        prompt = f"""
+        Search the web for the current, real-time financial metrics for: {ticker}.
+        I need 100% accurate, today's values for these metrics:
+        Price, PE, PB, PEG, Industry_PE_Limit, ROE, DebtEq, Beta, DivYield (as %), RSI (14-day), MA200, Vol, AvgVol, OpMargin, FCF, EPS.
 
-        # Metric Breakdown
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Value (30%)", f"{v}/10")
-        c2.metric("Safety (30%)", f"{s}/10")
-        c3.metric("Momentum (20%)", f"{m}/10")
-        c4.metric("Quality (20%)", f"{q}/10")
+        SCORING RUBRIC (Scale 1-10 per metric):
+        - Value (30%): PE (<15:10, 15-25:8, >40:2), PB (<2:10, >5:1), PEG (<1:10).
+        - Safety (30%): ROE (>20:10, <10:2), DebtEq (<0.1:10, >1:1), Beta (<0.8:10), DivYield (>4:10).
+        - Momentum (20%): RSI (30-40:10, 40-70:5, >70:2), Price vs MA200 (Price > MA200:10, else 1), Vol vs AvgVol (Vol > AvgVol:10, else 5).
+        - Quality (20%): OpMargin (>30:10, <10:1), FCF (Positive:10), EPS (Positive:10).
 
-        # Live Data Verification Table
-        st.subheader("Current Data Points (Verified)")
-        st.table(pd.DataFrame([data]).T.rename(columns={0: "Live Value"}))
+        Return ONLY a JSON object:
+        {{
+            "metrics": {{ "Price": 0, "PE": 0, "PB": 0, "PEG": 0, "Industry_PE": 0, "ROE": 0, "DebtEq": 0, "Beta": 0, "DivYield": 0, "RSI": 0, "MA200": 0, "Vol": 0, "AvgVol": 0, "OpMargin": 0, "FCF": 0, "EPS": 0 }},
+            "scores": {{ "Value": 0, "Safety": 0, "Momentum": 0, "Quality": 0 }},
+            "final_score": 0,
+            "recommendation": "BUY" | "SELL" | "HOLD"
+        }}
+        """
+        
+        try:
+            response = model.generate_content(prompt)
+            # Extract JSON from response
+            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                
+                # --- Dashboard Layout ---
+                st.divider()
+                f_score = data['final_score']
+                rec = data['recommendation']
+                
+                if f_score >= 7:
+                    st.success(f"### FINAL SCORE: {f_score} / 10 — 🚀 {rec}")
+                elif f_score <= 5:
+                    st.error(f"### FINAL SCORE: {f_score} / 10 — ⚠️ {rec}")
+                else:
+                    st.warning(f"### FINAL SCORE: {f_score} / 10 — ⚖️ {rec}")
+
+                # Metric Columns
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Value (30%)", f"{data['scores']['Value']}/10")
+                c2.metric("Safety (30%)", f"{data['scores']['Safety']}/10")
+                c3.metric("Momentum (20%)", f"{data['scores']['Momentum']}/10")
+                c4.metric("Quality (20%)", f"{data['scores']['Quality']}/10")
+                
+                # Raw Data Table
+                st.subheader("Current Market Data (Verified by AI)")
+                st.table(data['metrics'])
+            else:
+                st.error("Could not parse data. Please try again.")
+        except Exception as e:
+            st.error(f"API Error: {e}")
